@@ -21,8 +21,19 @@ async function connectToMongoDB() {
             const tutorsCollection = db.collection("tutors");
             const tutors = await tutorsCollection.find().toArray();
             // console.log(tutors);
-            res.json(tutors);
+            res.send(tutors);
         });
+
+        app.get("/tutors/:id", async (req, res) => {
+            const { id } = req.params;
+            const db = client.db("tutorcue");
+            const tutor = await db.collection("tutors").findOne({ _id: new ObjectId(id) });
+            if (!tutor) {
+                return res.status(404).json({ message: "Tutor not found" });
+            }
+            res.send(tutor);
+        });
+
         // console.log("You successfully connected to MongoDB!");
         return client;
     } catch (err) {
