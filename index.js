@@ -14,7 +14,7 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGODB_URI);
 async function connectToMongoDB() {
     try {
-        await client.connect();
+        // await client.connect();
         
         app.get("/tutors", async (req, res) => {
             const db = client.db("tutorcue");
@@ -47,6 +47,6 @@ app.get('/', (req, res) => {
     res.send('Hello World from express server!')
 })
 
-app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`)
-})
+// app.listen(port, () => {
+//     console.log(`Server running at http://localhost:${port}`)
+// })
