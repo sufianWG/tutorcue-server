@@ -15,13 +15,116 @@ const client = new MongoClient(process.env.MONGODB_URI);
 async function connectToMongoDB() {
     try {
         // await client.connect();
-        
+
+
         app.get("/tutors", async (req, res) => {
             const db = client.db("tutorcue");
             const tutorsCollection = db.collection("tutors");
-            const tutors = await tutorsCollection.find().toArray();
+
+            const requestedPage = req.query.page
+            const requestedLimit = req.query.limit
+
+            const search = req.query.search || ""
+            const searchBySub = req.query.subject || ""
+            const searchByTeachingMode = req.query.teachingMode || ""
+            const searchByInstitute = req.query.institution || ""
+            const searchByLocation = req.query.location || ""
+
+            // console.log(search);
+            const searchQuery = {}
+            if (search) {
+                searchQuery.$or = [
+                    {
+                        tutorName: {
+                            $regex: search,
+                            $options: "i"
+                        }
+                    },
+                    {
+                        subject: {
+                            $regex: search,
+                            $options: "i"
+                        }
+                    },
+                    {
+                        teachingMode: {
+                            $regex: search,
+                            $options: "i"
+                        }
+                    },
+                    {
+                        institution: {
+                            $regex: search,
+                            $options: "i"
+                        }
+                    },
+                    {
+                        location: {
+                            $regex: search,
+                            $options: "i"
+                        }
+                    }
+
+                ]
+            }
+
+            if (searchBySub) {
+                searchQuery.subject = {
+                    $regex : searchBySub,
+                    $options: "i"
+                }
+            }
+            if (searchByTeachingMode) {
+                searchQuery.teachingMode = {
+                    $regex : searchByTeachingMode,
+                    $options: "i"
+                }
+            }
+            if (searchByInstitute) {
+                searchQuery.institution = {
+                    $regex : searchByInstitute,
+                    $options: "i"
+                }
+            }
+            if (searchByLocation) {
+                searchQuery.location = {
+                    $regex : searchByLocation,
+                    $options: "i"
+                }
+            }
+
+            const page = Math.max(parseInt(requestedPage) || 1, 1);
+            // console.log(page);
+
+            const limit = Math.min(Math.max(parseInt(requestedLimit) || 9, 1), 30);
+            // console.log(limit);
+            const skip = (page - 1) * limit
+
+            const sort = req.query.sort
+            let sortQuery = { createdAt: -1 };
+            if (sort == "oldest") {
+                sortQuery = { createdAt: 1 };
+            }
+            // console.log(sort);
+
+            const totalTutors = await tutorsCollection.countDocuments(searchQuery);
+            // console.log(totalTutors);
+            const totalPages = Math.ceil(totalTutors / limit);
+            // console.log(totalPages);
+
+            const tutors = await tutorsCollection.find(searchQuery).sort(sortQuery).skip(skip).limit(limit).toArray();
             // console.log(tutors);
-            res.send(tutors);
+            res.send({
+                tutors,
+                pagination: {
+                    currentPage: page,
+                    limit,
+                    totalTutors,
+                    totalPages,
+                    nextPageStatus: page < totalPages,
+                    previousPageStatus: page > 1
+                }
+            });
         });
 
         app.get("/tutors/:id", async (req, res) => {
