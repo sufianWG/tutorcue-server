@@ -3,11 +3,13 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 const express = require('express');
 const dotenv = require("dotenv");
+const cors = require("cors");
 dotenv.config();
 const { MongoClient, ObjectId } = require("mongodb");
 const app = express()
 const port = process.env.PORT || 6028;
 
+app.use(cors());
 app.use(express.json());
 
 
