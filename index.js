@@ -16,7 +16,7 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGODB_URI);
 async function connectToMongoDB() {
     try {
-        // await client.connect();
+        await client.connect();
 
 
         app.get("/tutors", async (req, res) => {
@@ -72,25 +72,25 @@ async function connectToMongoDB() {
 
             if (searchBySub) {
                 searchQuery.subject = {
-                    $regex : searchBySub,
+                    $regex: searchBySub,
                     $options: "i"
                 }
             }
             if (searchByTeachingMode) {
                 searchQuery.teachingMode = {
-                    $regex : searchByTeachingMode,
+                    $regex: searchByTeachingMode,
                     $options: "i"
                 }
             }
             if (searchByInstitute) {
                 searchQuery.institution = {
-                    $regex : searchByInstitute,
+                    $regex: searchByInstitute,
                     $options: "i"
                 }
             }
             if (searchByLocation) {
                 searchQuery.location = {
-                    $regex : searchByLocation,
+                    $regex: searchByLocation,
                     $options: "i"
                 }
             }
@@ -139,6 +139,35 @@ async function connectToMongoDB() {
             res.send(tutor);
         });
 
+        app.post("/tutorslots", async (req, res) => {
+            const db = client.db("tutorcue");
+            const tutorsSlotsCollection = db.collection("tutorsSlots");
+            const slotsData = req.body
+            let insertedCount = 0;
+            for (const slotDay of slotsData) {
+                const existingDay = await tutorsSlotsCollection.findOne({
+                    tutorId: slotDay.tutorId,
+                    tutorName: slotDay.tutorName,
+                    dateNumber: slotDay.dateNumber,
+                    dayFull: slotDay.dayFull,
+                    month: slotDay.month,
+                    year: slotDay.year
+                })
+                if (!existingDay) {
+                    await tutorsSlotsCollection.insertOne(slotsData)
+                    insertedCount++
+                }
+                if(insertedCount === 0){
+                    return res.status(200).send({
+                        message: "this slot already in the collection"
+                    })
+                }
+                return res.status(201).send({
+                    message: "slots data stored successfully"
+                })
+            }
+        })
+
         // console.log("You successfully connected to MongoDB!");
         return client;
     } catch (err) {
@@ -153,8 +182,8 @@ app.get('/', (req, res) => {
 })
 
 //  have to remove comment out
-module.exports = app;
+// module.exports = app;
 
-// app.listen(port, () => {
-//     console.log(`Server running at http://localhost:${port}`)
-// })
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`)
+})
