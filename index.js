@@ -154,7 +154,7 @@ async function connectToMongoDB() {
                     year: slotDay.year
                 })
                 if (!existingDay) {
-                    await tutorsSlotsCollection.insertOne(slotsData)
+                    await tutorsSlotsCollection.insertOne(slotDay)
                     insertedCount++
                 }
             }
