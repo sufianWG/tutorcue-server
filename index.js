@@ -157,15 +157,15 @@ async function connectToMongoDB() {
                     await tutorsSlotsCollection.insertOne(slotsData)
                     insertedCount++
                 }
-                if(insertedCount === 0){
-                    return res.status(200).send({
-                        message: "this slot already in the collection"
-                    })
-                }
-                return res.status(201).send({
-                    message: "slots data stored successfully"
+            }
+            if (insertedCount === 0) {
+                return res.status(200).send({
+                    message: "this slot already in the collection"
                 })
             }
+            return res.status(201).send({
+                message: "slots data stored successfully"
+            })
         })
 
         // console.log("You successfully connected to MongoDB!");
