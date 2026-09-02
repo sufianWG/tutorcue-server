@@ -8,6 +8,8 @@ const cors = require("cors");
 const generateSessionPassCode = require("./utils/generateSessionPassCode");
 const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 const { MongoClient, ObjectId } = require("mongodb");
+const getCurrentWeekDays = require("./utils/getCurrentWeekDays");
+const generateTimeSlots = require("./utils/generateTimeSlots");
 const app = express()
 const port = process.env.PORT || 6028;
 
@@ -33,14 +35,15 @@ const verifyToken = async (req, res, next) => {
             message: "Unauthorized access"
         });
     }
-    console.log(token);
+    // console.log(token);
     try {
         const { payload } = await jwtVerify(token, JWKS);
-        console.log(payload);
+        // console.log(payload);
+        req.user = payload;
         next()
     } catch (error) {
         return res.status(403).json({
-            message: "Forbidedn"
+            message: "Forbidden"
         });
     }
 
@@ -50,11 +53,86 @@ const client = new MongoClient(process.env.MONGODB_URI);
 async function connectToMongoDB() {
     try {
         // await client.connect();
+        const ensureTutorSlots = async (tutorId) => {
+            const db = client.db("tutorcue");
+            const tutorsCollection = db.collection("tutors");
+            const tutorSlotsCollection = db.collection("tutorsSlots");
 
+            // tutor data get
+            const tutor = await tutorsCollection.findOne({
+                _id: new ObjectId(tutorId)
+            });
+
+            if (!tutor) {
+                return false;
+            }
+
+            const weekDays = getCurrentWeekDays();
+
+            // tutor je koy din available
+            const sessionStartDate = new Date(tutor.sessionStartDate);
+
+            sessionStartDate.setHours(0, 0, 0, 0);
+
+            const availableWeekDays = weekDays.filter(day =>
+                tutor.availableDays.includes(day.dayFull) &&
+                day.dateObject >= sessionStartDate
+            );
+
+            // time theke slots generate
+            const slots = generateTimeSlots(
+                tutor.availableTimeSlot.start,
+                tutor.availableTimeSlot.end
+            );
+
+            // default status add
+            const slotsWithStatus = slots.map(slot => {
+                return {
+                    ...slot,
+                    status: "available",
+                    bookedBy: null
+                };
+            });
+
+            for (const day of availableWeekDays) {
+
+                const slotData = {
+                    tutorId: tutor._id.toString(),
+                    tutorName: tutor.tutorName,
+                    dayFull: day.dayFull,
+                    dayShort: day.dayShort,
+                    dateNumber: day.dateNumber,
+                    month: day.month,
+                    year: day.year,
+                    totalSlots: slotsWithStatus.length,
+                    availableSlots: slotsWithStatus.length,
+                    slots: slotsWithStatus
+                };
+
+                await tutorSlotsCollection.updateOne(
+                    {
+                        tutorId: tutor._id.toString(),
+                        dateNumber: day.dateNumber,
+                        month: day.month,
+                        year: day.year
+                    },
+
+                    {
+                        $setOnInsert: slotData
+                    },
+
+                    {
+                        upsert: true
+                    }
+                );
+            }
+            return true
+        };
 
         app.get("/tutors", async (req, res) => {
             const db = client.db("tutorcue");
             const tutorsCollection = db.collection("tutors");
+            const tutorSlotsCollection = db.collection("tutorsSlots");
 
             const requestedPage = req.query.page
             const requestedLimit = req.query.limit
@@ -149,8 +227,45 @@ async function connectToMongoDB() {
 
             const tutors = await tutorsCollection.find(searchQuery).sort(sortQuery).skip(skip).limit(limit).toArray();
             // console.log(tutors);
+            const weekDays = getCurrentWeekDays();
+
+            const currentWeekDates = weekDays.map(day => {
+                return {
+                    dateNumber: day.dateNumber,
+                    month: day.month,
+                    year: day.year
+                };
+            });
+            const tutorsWithSlots = [];
+
+            for (const tutor of tutors) {
+
+                const tutorId = tutor._id.toString();
+
+                // current week slot na thakle create korbe
+                await ensureTutorSlots(tutorId);
+
+                // current week er slot data get korbe
+                const currentWeekSlots = await tutorSlotsCollection.find({
+                    tutorId,
+                    $or: currentWeekDates
+                }).toArray();
+
+                // current week er available slot total
+                const availableSlotsThisWeek = currentWeekSlots.reduce(
+                    (total, day) => {
+                        return total + day.availableSlots;
+                    },
+                    0
+                );
+
+                tutorsWithSlots.push({
+                    ...tutor,
+                    availableSlotsThisWeek
+                });
+            }
             res.send({
-                tutors,
+                tutors: tutorsWithSlots,
                 pagination: {
                     currentPage: page,
                     limit,
@@ -162,7 +277,7 @@ async function connectToMongoDB() {
             });
         });
 
-        app.get("/tutors/:id", verifyToken,  async (req, res) => {
+        app.get("/tutors/:id", verifyToken, async (req, res) => {
             const { id } = req.params;
             const db = client.db("tutorcue");
             const tutor = await db.collection("tutors").findOne({ _id: new ObjectId(id) });
@@ -172,41 +287,67 @@ async function connectToMongoDB() {
             res.send(tutor);
         });
 
-        app.post("/tutorslots", verifyToken, async (req, res) => {
-            const db = client.db("tutorcue");
-            const tutorsSlotsCollection = db.collection("tutorsSlots");
-            const slotsData = req.body
-            let insertedCount = 0;
-            for (const slotDay of slotsData) {
-                const existingDay = await tutorsSlotsCollection.findOne({
-                    tutorId: slotDay.tutorId,
-                    tutorName: slotDay.tutorName,
-                    dateNumber: slotDay.dateNumber,
-                    dayFull: slotDay.dayFull,
-                    month: slotDay.month,
-                    year: slotDay.year
-                })
-                if (!existingDay) {
-                    await tutorsSlotsCollection.insertOne(slotDay)
-                    insertedCount++
-                }
-            }
-            if (insertedCount === 0) {
-                return res.status(200).send({
-                    message: "this slot already in the collection"
-                })
-            }
-            return res.status(201).send({
-                message: "slots data stored successfully"
-            })
-        })
+        // app.post("/tutorslots", verifyToken, async (req, res) => {
+        //     const db = client.db("tutorcue");
+        //     const tutorsSlotsCollection = db.collection("tutorsSlots");
+        //     const slotsData = req.body
+        //     let insertedCount = 0;
+        //     for (const slotDay of slotsData) {
+        //         const existingDay = await tutorsSlotsCollection.findOne({
+        //             tutorId: slotDay.tutorId,
+        //             tutorName: slotDay.tutorName,
+        //             dateNumber: slotDay.dateNumber,
+        //             dayFull: slotDay.dayFull,
+        //             month: slotDay.month,
+        //             year: slotDay.year
+        //         })
+        //         if (!existingDay) {
+        //             await tutorsSlotsCollection.insertOne(slotDay)
+        //             insertedCount++
+        //         }
+        //     }
+        //     if (insertedCount === 0) {
+        //         return res.status(200).send({
+        //             message: "this slot already in the collection"
+        //         })
+        //     }
+        //     return res.status(201).send({
+        //         message: "slots data stored successfully"
+        //     })
+        // })
         app.get("/tutorslots/:tutorId", verifyToken, async (req, res) => {
             const db = client.db("tutorcue");
             const tutorsSlotsCollection = db.collection("tutorsSlots");
-            const query = {
-                tutorId: req.params.tutorId,
+            const tutorId = req.params.tutorId
+
+            if (!ObjectId.isValid(tutorId)) {
+                return res.status(400).send({
+                    message: "Invalid tutor id"
+                });
             }
-            const slots = await tutorsSlotsCollection.find(query).toArray();
+
+            const tutorExists = await ensureTutorSlots(tutorId);
+
+            if (!tutorExists) {
+                return res.status(404).send({
+                    message: "Tutor not found"
+                });
+            }
+
+            const weekDays = getCurrentWeekDays();
+
+            const currentWeekDates = weekDays.map(day => {
+                return {
+                    dateNumber: day.dateNumber,
+                    month: day.month,
+                    year: day.year
+                };
+            });
+
+            const slots = await tutorsSlotsCollection.find({
+                tutorId,
+                $or: currentWeekDates
+            }).toArray()
             res.send(slots);
         })
         app.post("/booking", verifyToken, async (req, res) => {
@@ -214,7 +355,8 @@ async function connectToMongoDB() {
             const bookingCollection = db.collection("booking");
             const tutorSlotCollection = db.collection("tutorsSlots");
             const bookingData = req.body
-            console.log("bookingData:", bookingData);
+            // console.log("bookingData:", bookingData);
+
 
             //  check korbe ei slot already booked kina
             const existingBooking = await bookingCollection.findOne({
@@ -226,14 +368,14 @@ async function connectToMongoDB() {
                 "sessionTime.end": bookingData.sessionTime.end,
                 status: "booked"
             })
-            console.log("existingBooking", existingBooking);
+            // console.log("existingBooking", existingBooking);
             if (existingBooking) {
                 return res.status(409).send({
                     success: false,
                     message: "This slot has already been booked"
                 })
             }
-
+            const studentEmail = req.user.email;
             // jodi slot available thake tahole update korbe status to booked and bookedBy studentEmail
             const slotUpdateResult = await tutorSlotCollection.updateOne(
                 {
@@ -252,7 +394,7 @@ async function connectToMongoDB() {
                 {
                     $set: {
                         "slots.$.status": "booked",
-                        "slots.$.bookedBy": bookingData.studentEmail,
+                        "slots.$.bookedBy": studentEmail,
                     },
                     $inc: {
                         availableSlots: -1,
@@ -270,16 +412,18 @@ async function connectToMongoDB() {
             }
 
             // booking data insert korbe booking collection e with sessionPassCode and status booked
+
             const sessionPassCode = generateSessionPassCode();
             // console.log("sessionPassCode:", sessionPassCode);
             const newBooking = {
                 ...bookingData,
+                studentEmail,
                 sessionPassCode,
                 status: "booked",
                 createdAt: new Date(),
                 updatedAt: new Date()
             }
-            console.log("newBooking", newBooking);
+            // console.log("newBooking", newBooking);
 
             const result = await bookingCollection.insertOne(newBooking);
             if (!result.acknowledged) {
@@ -298,7 +442,7 @@ async function connectToMongoDB() {
         // console.log("You successfully connected to MongoDB!");
         return client;
     } catch (err) {
-        console.dir(err);
+        // console.dir(err);
     }
 }
 
