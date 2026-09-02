@@ -3,8 +3,10 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 const express = require('express');
 const dotenv = require("dotenv");
-const cors = require("cors");
 dotenv.config();
+const cors = require("cors");
+const generateSessionPassCode = require("./utils/generateSessionPassCode");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 const { MongoClient, ObjectId } = require("mongodb");
 const app = express()
 const port = process.env.PORT || 6028;
@@ -12,6 +14,37 @@ const port = process.env.PORT || 6028;
 app.use(cors());
 app.use(express.json());
 
+const JWKS = createRemoteJWKSet(
+    new URL(`${process.env.FRONTEND_URL}/api/auth/jwks`)
+)
+
+const verifyToken = async (req, res, next) => {
+    const authHeader = req.headers.authorization
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).send({
+            message: "Unauthorized access"
+        });
+    }
+
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+        return res.status(401).send({
+            message: "Unauthorized access"
+        });
+    }
+    console.log(token);
+    try {
+        const { payload } = await jwtVerify(token, JWKS);
+        console.log(payload);
+        next()
+    } catch (error) {
+        return res.status(403).json({
+            message: "Forbidedn"
+        });
+    }
+
+}
 
 const client = new MongoClient(process.env.MONGODB_URI);
 async function connectToMongoDB() {
@@ -129,7 +162,7 @@ async function connectToMongoDB() {
             });
         });
 
-        app.get("/tutors/:id", async (req, res) => {
+        app.get("/tutors/:id", verifyToken,  async (req, res) => {
             const { id } = req.params;
             const db = client.db("tutorcue");
             const tutor = await db.collection("tutors").findOne({ _id: new ObjectId(id) });
@@ -139,7 +172,7 @@ async function connectToMongoDB() {
             res.send(tutor);
         });
 
-        app.post("/tutorslots", async (req, res) => {
+        app.post("/tutorslots", verifyToken, async (req, res) => {
             const db = client.db("tutorcue");
             const tutorsSlotsCollection = db.collection("tutorsSlots");
             const slotsData = req.body
@@ -166,6 +199,91 @@ async function connectToMongoDB() {
             return res.status(201).send({
                 message: "slots data stored successfully"
             })
+        })
+        app.post("/booking", verifyToken, async (req, res) => {
+            const db = client.db("tutorcue");
+            const bookingCollection = db.collection("booking");
+            const tutorSlotCollection = db.collection("tutorsSlots");
+            const bookingData = req.body
+            console.log("bookingData:", bookingData);
+
+            //  check korbe ei slot already booked kina
+            const existingBooking = await bookingCollection.findOne({
+                tutorId: bookingData.tutorId,
+                dateNumber: bookingData.dateNumber,
+                month: bookingData.month,
+                year: bookingData.year,
+                "sessionTime.start": bookingData.sessionTime.start,
+                "sessionTime.end": bookingData.sessionTime.end,
+                status: "booked"
+            })
+            console.log("existingBooking", existingBooking);
+            if (existingBooking) {
+                return res.status(409).send({
+                    success: false,
+                    message: "This slot has already been booked"
+                })
+            }
+
+            // jodi slot available thake tahole update korbe status to booked and bookedBy studentEmail
+            const slotUpdateResult = await tutorSlotCollection.updateOne(
+                {
+                    tutorId: bookingData.tutorId,
+                    dateNumber: bookingData.dateNumber,
+                    month: bookingData.month,
+                    year: bookingData.year,
+                    slots: {
+                        $elemMatch: {
+                            start: bookingData.sessionTime.start,
+                            end: bookingData.sessionTime.end,
+                            status: "available"
+                        }
+                    }
+                },
+                {
+                    $set: {
+                        "slots.$.status": "booked",
+                        "slots.$.bookedBy": bookingData.studentEmail,
+                    },
+                    $inc: {
+                        availableSlots: -1,
+                    }
+                }
+            );
+            // console.log("slotUpdateResult:", slotUpdateResult);
+
+            // check korbe jodi modifiedCount 0 hoy tahole mane ei slot already booked or available na
+            if (slotUpdateResult.modifiedCount === 0) {
+                return res.status(409).send({
+                    success: false,
+                    message: "This slot has already been booked or is not available"
+                })
+            }
+
+            // booking data insert korbe booking collection e with sessionPassCode and status booked
+            const sessionPassCode = generateSessionPassCode();
+            // console.log("sessionPassCode:", sessionPassCode);
+            const newBooking = {
+                ...bookingData,
+                sessionPassCode,
+                status: "booked",
+                createdAt: new Date(),
+                updatedAt: new Date()
+            }
+            console.log("newBooking", newBooking);
+
+            const result = await bookingCollection.insertOne(newBooking);
+            if (!result.acknowledged) {
+                return res.status(500).send({
+                    success: false,
+                    message: "Failed to book session"
+                })
+            }
+            res.status(201).send({
+                success: true,
+                message: "Session booked successfully",
+                sessionPassCode
+            });
         })
 
         // console.log("You successfully connected to MongoDB!");
