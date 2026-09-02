@@ -200,6 +200,15 @@ async function connectToMongoDB() {
                 message: "slots data stored successfully"
             })
         })
+        app.get("/tutorslots/:tutorId", verifyToken, async (req, res) => {
+            const db = client.db("tutorcue");
+            const tutorsSlotsCollection = db.collection("tutorsSlots");
+            const query = {
+                tutorId: req.params.tutorId,
+            }
+            const slots = await tutorsSlotsCollection.find(query).toArray();
+            res.send(slots);
+        })
         app.post("/booking", verifyToken, async (req, res) => {
             const db = client.db("tutorcue");
             const bookingCollection = db.collection("booking");
