@@ -94,38 +94,36 @@ async function connectToMongoDB() {
                 };
             });
 
-            for (const day of availableWeekDays) {
-
-                const slotData = {
-                    tutorId: tutor._id.toString(),
-                    tutorName: tutor.tutorName,
-                    dayFull: day.dayFull,
-                    dayShort: day.dayShort,
-                    dateNumber: day.dateNumber,
-                    month: day.month,
-                    year: day.year,
-                    totalSlots: slotsWithStatus.length,
-                    availableSlots: slotsWithStatus.length,
-                    slots: slotsWithStatus
-                };
-
-                await tutorSlotsCollection.updateOne(
-                    {
+            await Promise.all(
+                availableWeekDays.map(async (day) => {
+                    const slotData = {
                         tutorId: tutor._id.toString(),
+                        tutorName: tutor.tutorName,
+                        dayFull: day.dayFull,
+                        dayShort: day.dayShort,
                         dateNumber: day.dateNumber,
                         month: day.month,
-                        year: day.year
-                    },
-
-                    {
-                        $setOnInsert: slotData
-                    },
-
-                    {
-                        upsert: true
-                    }
-                );
-            }
+                        year: day.year,
+                        totalSlots: slotsWithStatus.length,
+                        availableSlots: slotsWithStatus.length,
+                        slots: slotsWithStatus
+                    };
+                    await tutorSlotsCollection.updateOne(
+                        {
+                            tutorId: tutor._id.toString(),
+                            dateNumber: day.dateNumber,
+                            month: day.month,
+                            year: day.year
+                        },
+                        {
+                            $setOnInsert: slotData
+                        },
+                        {
+                            upsert: true
+                        }
+                    );
+                })
+            );
             return true
         };
 
@@ -236,34 +234,29 @@ async function connectToMongoDB() {
                     year: day.year
                 };
             });
-            const tutorsWithSlots = [];
-
-            for (const tutor of tutors) {
-
-                const tutorId = tutor._id.toString();
-
-                // current week slot na thakle create korbe
-                await ensureTutorSlots(tutorId);
-
-                // current week er slot data get korbe
-                const currentWeekSlots = await tutorSlotsCollection.find({
-                    tutorId,
-                    $or: currentWeekDates
-                }).toArray();
-
-                // current week er available slot total
-                const availableSlotsThisWeek = currentWeekSlots.reduce(
-                    (total, day) => {
-                        return total + day.availableSlots;
-                    },
-                    0
-                );
-
-                tutorsWithSlots.push({
-                    ...tutor,
-                    availableSlotsThisWeek
-                });
-            }
+            const tutorsWithSlots = await Promise.all(
+                tutors.map(async (tutor) => {
+                    const tutorId =
+                        tutor._id.toString();
+                    await ensureTutorSlots(tutorId);
+                    const currentWeekSlots =
+                        await tutorSlotsCollection.find({
+                            tutorId,
+                            $or: currentWeekDates
+                        }).toArray();
+                    const availableSlotsThisWeek =
+                        currentWeekSlots.reduce(
+                            (total, day) => {
+                                return total + day.availableSlots;
+                            },
+                            0
+                        );
+                    return {
+                        ...tutor,
+                        availableSlotsThisWeek
+                    };
+                })
+            );
             res.send({
                 tutors: tutorsWithSlots,
                 pagination: {
