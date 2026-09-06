@@ -65,18 +65,20 @@ app.use(async (req, res, next) => {
 
 async function connectToMongoDB() {
     try {
-        // await client.connect();
+        // await na diye background e connect hocche, jate connect() slow/timeout hole o
+        // niche thaka app.get/app.post route gula register hote block na hoy
+        client.connect().catch(error => {
+            console.log("initial connect error:", error.message);
+        });
 
-        // duplicate slot document jate kokhono na hoy, tai unique index
-        // eita try/catch e rakha hoyeche jate index create e kono somossa hoile o /tutors, /booking egula route register hote block na hoy
-        try {
-            await client.db("tutorcue").collection("tutorsSlots").createIndex(
-                { tutorId: 1, dateNumber: 1, month: 1, year: 1 },
-                { unique: true }
-            );
-        } catch (error) {
+        // duplicate slot document jate kokhono na hoy, tai unique index.
+        // eitao await kora hocche na, jate index create slow/timeout hole route register hote block na hoy
+        client.db("tutorcue").collection("tutorsSlots").createIndex(
+            { tutorId: 1, dateNumber: 1, month: 1, year: 1 },
+            { unique: true }
+        ).catch(error => {
             console.log("createIndex error:", error.message);
-        }
+        });
 
         // weeksCount=1 dile shudhu ei week, weeksCount=2 dile ei week + next week er slot generate hobe.
         // GET /tutors (bulk, onek tutor ek shathe) hot endpoint tai oikhane 1 week e rakha hoyeche,
