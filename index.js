@@ -50,6 +50,19 @@ const verifyToken = async (req, res, next) => {
 }
 
 const client = new MongoClient(process.env.MONGODB_URI);
+
+// serverless e onek shomoy topology closed hoye jay (Atlas nijei idle connection bondo kore dey),
+// tai protita request asar age connection thik ache kina check kore, na thakle abar connect kora hocche.
+// client already connected thakle .connect() abar call korao safe, notun kore connect hobe na.
+app.use(async (req, res, next) => {
+    try {
+        await client.connect();
+    } catch (error) {
+        console.log("mongodb reconnect error:", error.message);
+    }
+    next();
+});
+
 async function connectToMongoDB() {
     try {
         // await client.connect();
