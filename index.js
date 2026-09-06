@@ -288,6 +288,7 @@ async function connectToMongoDB() {
 
             const newTutor = {
                 ...tutorData,
+                sessionStartDate: new Date(tutorData.sessionStartDate),
                 createdBy: {
                     name: req.user.name,
                     email: req.user.email
