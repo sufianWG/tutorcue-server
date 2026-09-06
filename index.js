@@ -55,10 +55,15 @@ async function connectToMongoDB() {
         // await client.connect();
 
         // duplicate slot document jate kokhono na hoy, tai unique index
-        await client.db("tutorcue").collection("tutorsSlots").createIndex(
-            { tutorId: 1, dateNumber: 1, month: 1, year: 1 },
-            { unique: true }
-        );
+        // eita try/catch e rakha hoyeche jate index create e kono somossa hoile o /tutors, /booking egula route register hote block na hoy
+        try {
+            await client.db("tutorcue").collection("tutorsSlots").createIndex(
+                { tutorId: 1, dateNumber: 1, month: 1, year: 1 },
+                { unique: true }
+            );
+        } catch (error) {
+            console.log("createIndex error:", error.message);
+        }
 
         const ensureTutorSlots = async (tutorId) => {
             const db = client.db("tutorcue");
