@@ -67,7 +67,8 @@ async function connectToMongoDB() {
                 return false;
             }
 
-            const weekDays = getCurrentWeekDays();
+            // ei week & next week miliye 2 week er slot generate hobe, jate agei booking dewa jay
+            const weekDays = getCurrentWeekDays().concat(getCurrentWeekDays(1));
 
             // tutor je koy din available
             const sessionStartDate = new Date(tutor.sessionStartDate);
@@ -359,7 +360,8 @@ async function connectToMongoDB() {
                 });
             }
 
-            const weekDays = getCurrentWeekDays();
+            // ei week & next week miliye 2 week er slot dekhabe, jate agei booking dewa jay
+            const weekDays = getCurrentWeekDays().concat(getCurrentWeekDays(1));
 
             const currentWeekDates = weekDays.map(day => {
                 return {
