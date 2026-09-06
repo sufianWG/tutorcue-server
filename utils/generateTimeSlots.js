@@ -32,7 +32,6 @@ const generateTimeSlots = (
     const slots = [];
 
     while (current + duration <= endTime) {
-
         slots.push({
             start: minutesToTime(current),
             end: minutesToTime(current + duration)

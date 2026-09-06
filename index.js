@@ -53,6 +53,13 @@ const client = new MongoClient(process.env.MONGODB_URI);
 async function connectToMongoDB() {
     try {
         // await client.connect();
+
+        // duplicate slot document jate kokhono na hoy, tai unique index
+        await client.db("tutorcue").collection("tutorsSlots").createIndex(
+            { tutorId: 1, dateNumber: 1, month: 1, year: 1 },
+            { unique: true }
+        );
+
         const ensureTutorSlots = async (tutorId) => {
             const db = client.db("tutorcue");
             const tutorsCollection = db.collection("tutors");
@@ -109,20 +116,27 @@ async function connectToMongoDB() {
                         availableSlots: slotsWithStatus.length,
                         slots: slotsWithStatus
                     };
-                    await tutorSlotsCollection.updateOne(
-                        {
-                            tutorId: tutor._id.toString(),
-                            dateNumber: day.dateNumber,
-                            month: day.month,
-                            year: day.year
-                        },
-                        {
-                            $setOnInsert: slotData
-                        },
-                        {
-                            upsert: true
+                    try {
+                        await tutorSlotsCollection.updateOne(
+                            {
+                                tutorId: tutor._id.toString(),
+                                dateNumber: day.dateNumber,
+                                month: day.month,
+                                year: day.year
+                            },
+                            {
+                                $setOnInsert: slotData
+                            },
+                            {
+                                upsert: true
+                            }
+                        );
+                    } catch (error) {
+                        // duplicate key error মানে already onno akta request eituku already insert kore fellese, tai eita ignore kora jabe
+                        if (error.code !== 11000) {
+                            throw error;
                         }
-                    );
+                    }
                 })
             );
             return true
@@ -226,7 +240,8 @@ async function connectToMongoDB() {
 
             const tutors = await tutorsCollection.find(searchQuery).sort(sortQuery).skip(skip).limit(limit).toArray();
             // console.log(tutors);
-            const weekDays = getCurrentWeekDays();
+            // ei week & next week miliye 2 week er slot count dekhabe card e
+            const weekDays = getCurrentWeekDays().concat(getCurrentWeekDays(1));
 
             const currentWeekDates = weekDays.map(day => {
                 return {
