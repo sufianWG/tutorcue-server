@@ -65,7 +65,11 @@ async function connectToMongoDB() {
             console.log("createIndex error:", error.message);
         }
 
-        const ensureTutorSlots = async (tutorId) => {
+        // weeksCount=1 dile shudhu ei week, weeksCount=2 dile ei week + next week er slot generate hobe.
+        // GET /tutors (bulk, onek tutor ek shathe) hot endpoint tai oikhane 1 week e rakha hoyeche,
+        // shudhu single tutor er detail/booking page (/tutorslots/:tutorId) e 2 week use kora hocche,
+        // karon Promise.all diye upsert korar shonkha bulk list e onek beshi hoye giye timeout er risk toiri kore
+        const ensureTutorSlots = async (tutorId, weeksCount = 1) => {
             const db = client.db("tutorcue");
             const tutorsCollection = db.collection("tutors");
             const tutorSlotsCollection = db.collection("tutorsSlots");
@@ -79,8 +83,10 @@ async function connectToMongoDB() {
                 return false;
             }
 
-            // ei week & next week miliye 2 week er slot generate hobe, jate agei booking dewa jay
-            const weekDays = getCurrentWeekDays().concat(getCurrentWeekDays(1));
+            let weekDays = getCurrentWeekDays();
+            for (let i = 1; i < weeksCount; i++) {
+                weekDays = weekDays.concat(getCurrentWeekDays(i));
+            }
 
             // tutor je koy din available
             const sessionStartDate = new Date(tutor.sessionStartDate);
@@ -245,8 +251,8 @@ async function connectToMongoDB() {
 
             const tutors = await tutorsCollection.find(searchQuery).sort(sortQuery).skip(skip).limit(limit).toArray();
             // console.log(tutors);
-            // ei week & next week miliye 2 week er slot count dekhabe card e
-            const weekDays = getCurrentWeekDays().concat(getCurrentWeekDays(1));
+            // ei route ta onek tutor ek shathe process kore (bulk), tai load kom rakhte shudhu ei week
+            const weekDays = getCurrentWeekDays();
 
             const currentWeekDates = weekDays.map(day => {
                 return {
@@ -372,7 +378,8 @@ async function connectToMongoDB() {
                 });
             }
 
-            const tutorExists = await ensureTutorSlots(tutorId);
+            // ei route ta shudhu ekjon tutor er jonno, tai ekhane 2 week e generate kora nirapod
+            const tutorExists = await ensureTutorSlots(tutorId, 2);
 
             if (!tutorExists) {
                 return res.status(404).send({
