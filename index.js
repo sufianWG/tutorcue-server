@@ -280,6 +280,37 @@ async function connectToMongoDB() {
             res.send(tutor);
         });
 
+        app.post("/tutors", verifyToken, async (req, res) => {
+            const db = client.db("tutorcue");
+            const tutorsCollection = db.collection("tutors");
+            const tutorData = req.body
+            // console.log("tutorData:", tutorData);
+
+            const newTutor = {
+                ...tutorData,
+                createdBy: {
+                    name: req.user.name,
+                    email: req.user.email
+                },
+                createdAt: new Date(),
+                updatedAt: new Date()
+            }
+            // console.log("newTutor:", newTutor);
+
+            const result = await tutorsCollection.insertOne(newTutor);
+            if (!result.acknowledged) {
+                return res.status(500).send({
+                    success: false,
+                    message: "Failed to add tutor"
+                })
+            }
+            res.status(201).send({
+                success: true,
+                message: "Tutor added successfully",
+                tutorId: result.insertedId
+            });
+        })
+
         // app.post("/tutorslots", verifyToken, async (req, res) => {
         //     const db = client.db("tutorcue");
         //     const tutorsSlotsCollection = db.collection("tutorsSlots");
