@@ -354,6 +354,86 @@ async function connectToMongoDB() {
             });
         })
 
+        app.get("/my-tutors", verifyToken, async (req, res) => {
+            const db = client.db("tutorcue");
+            const tutorsCollection = db.collection("tutors");
+            const email = req.user.email
+            // console.log("email:", email);
+
+            const myTutors = await tutorsCollection.find({
+                "createdBy.email": email
+            }).sort({ createdAt: -1 }).toArray();
+            // console.log("myTutors:", myTutors);
+
+            res.send(myTutors);
+        })
+
+        app.patch("/tutors/:id", verifyToken, async (req, res) => {
+            const { id } = req.params;
+            const db = client.db("tutorcue");
+            const tutorsCollection = db.collection("tutors");
+            const updatedData = req.body
+            // console.log("updatedData:", updatedData);
+
+            // client theke ei field gula asleo update hobe na, server nijer moto rakhbe
+            delete updatedData._id;
+            delete updatedData.createdBy;
+            delete updatedData.createdAt;
+
+            if (updatedData.sessionStartDate) {
+                updatedData.sessionStartDate = new Date(updatedData.sessionStartDate);
+            }
+
+            const result = await tutorsCollection.updateOne(
+                {
+                    _id: new ObjectId(id),
+                    "createdBy.email": req.user.email
+                },
+                {
+                    $set: {
+                        ...updatedData,
+                        updatedAt: new Date()
+                    }
+                }
+            );
+            // console.log("update result:", result);
+
+            // matchedCount 0 mane ei tutor ei user er na, ba tutor ta e nei
+            if (result.matchedCount === 0) {
+                return res.status(404).send({
+                    success: false,
+                    message: "Tutor not found or you are not the owner"
+                })
+            }
+            res.send({
+                success: true,
+                message: "Tutor updated successfully"
+            });
+        })
+
+        app.delete("/tutors/:id", verifyToken, async (req, res) => {
+            const { id } = req.params;
+            const db = client.db("tutorcue");
+            const tutorsCollection = db.collection("tutors");
+
+            const result = await tutorsCollection.deleteOne({
+                _id: new ObjectId(id),
+                "createdBy.email": req.user.email
+            });
+            // console.log("delete result:", result);
+
+            if (result.deletedCount === 0) {
+                return res.status(404).send({
+                    success: false,
+                    message: "Tutor not found or you are not the owner"
+                })
+            }
+            res.send({
+                success: true,
+                message: "Tutor deleted successfully"
+            });
+        })
+
         // app.post("/tutorslots", verifyToken, async (req, res) => {
         //     const db = client.db("tutorcue");
         //     const tutorsSlotsCollection = db.collection("tutorsSlots");

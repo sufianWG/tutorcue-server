@@ -1,8 +1,6 @@
 const getCurrentWeekDays = (weekOffset = 0) => {
     const today = new Date();
-
     today.setHours(0, 0, 0, 0);
-
     const currentDay = today.getDay();
 
     const diff =
@@ -11,16 +9,11 @@ const getCurrentWeekDays = (weekOffset = 0) => {
             : 1 - currentDay;
 
     const monday = new Date(today);
-
     monday.setDate(today.getDate() + diff + (weekOffset * 7));
-
     const weekDays = [];
-
     for (let i = 0; i < 7; i++) {
         const date = new Date(monday);
-
         date.setDate(monday.getDate() + i);
-
         weekDays.push({
             dateObject: date,
 
