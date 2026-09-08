@@ -588,6 +588,90 @@ async function connectToMongoDB() {
             });
         })
 
+        app.get("/my-bookings", verifyToken, async (req, res) => {
+            const db = client.db("tutorcue");
+            const bookingCollection = db.collection("booking");
+            const studentEmail = req.user.email;
+            // console.log("studentEmail:", studentEmail);
+
+            const myBookings = await bookingCollection.find({
+                studentEmail
+            }).sort({ createdAt: -1 }).toArray();
+            // console.log("myBookings:", myBookings);
+
+            res.send(myBookings);
+        })
+
+        app.patch("/bookings/:id/cancel", verifyToken, async (req, res) => {
+            const { id } = req.params;
+            const db = client.db("tutorcue");
+            const bookingCollection = db.collection("booking");
+            const tutorSlotCollection = db.collection("tutorsSlots");
+
+            const booking = await bookingCollection.findOne({
+                _id: new ObjectId(id),
+                studentEmail: req.user.email
+            });
+            // console.log("booking:", booking);
+
+            if (!booking) {
+                return res.status(404).send({
+                    success: false,
+                    message: "Booking not found or you are not the owner"
+                })
+            }
+
+            if (booking.status === "cancelled") {
+                return res.status(409).send({
+                    success: false,
+                    message: "This booking is already cancelled"
+                })
+            }
+
+            // POST /booking e slot ta booked kora hoyeche, ekhon cancel korle ulta kaj kore abar available kore dibe
+            const slotRestoreResult = await tutorSlotCollection.updateOne(
+                {
+                    tutorId: booking.tutorId,
+                    dateNumber: booking.dateNumber,
+                    month: booking.month,
+                    year: booking.year,
+                    slots: {
+                        $elemMatch: {
+                            start: booking.sessionTime.start,
+                            end: booking.sessionTime.end,
+                            status: "booked"
+                        }
+                    }
+                },
+                {
+                    $set: {
+                        "slots.$.status": "available",
+                        "slots.$.bookedBy": null,
+                    },
+                    $inc: {
+                        availableSlots: 1,
+                    }
+                }
+            );
+            // console.log("slotRestoreResult:", slotRestoreResult);
+
+            const result = await bookingCollection.updateOne(
+                { _id: new ObjectId(id) },
+                {
+                    $set: {
+                        status: "cancelled",
+                        updatedAt: new Date()
+                    }
+                }
+            );
+            // console.log("cancel result:", result);
+
+            res.send({
+                success: true,
+                message: "Booking cancelled successfully"
+            });
+        })
+
         // console.log("You successfully connected to MongoDB!");
         return client;
     } catch (err) {
