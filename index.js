@@ -176,11 +176,16 @@ async function connectToMongoDB() {
             const requestedPage = req.query.page
             const requestedLimit = req.query.limit
 
-            const search = req.query.search || ""
-            const searchBySub = req.query.subject || ""
-            const searchByTeachingMode = req.query.teachingMode || ""
-            const searchByInstitute = req.query.institution || ""
-            const searchByLocation = req.query.location || ""
+            // frontend er select dropdown e multi-word value hyphen diye pathano hoy (jemon "computer-science"),
+            // kintu DB te asol value space diye stored ("Computer Science") - tai regex match korar age hyphen ke space e convert kora hocche.
+            // $options: "i" already case-insensitive, tai case niye frontend theke matho matha ghamano lagbe na
+            const normalizeFilterValue = (value) => value.replace(/-/g, " ")
+
+            const search = normalizeFilterValue(req.query.search || "")
+            const searchBySub = normalizeFilterValue(req.query.subject || "")
+            const searchByTeachingMode = normalizeFilterValue(req.query.teachingMode || "")
+            const searchByInstitute = normalizeFilterValue(req.query.institution || "")
+            const searchByLocation = normalizeFilterValue(req.query.location || "")
 
             // console.log(search);
             const searchQuery = {}
